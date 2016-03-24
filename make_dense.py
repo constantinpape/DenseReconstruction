@@ -10,8 +10,7 @@ def process_command_line():
     parser = argparse.ArgumentParser(
             description='Input for dense reconstruction from skeletons')
 
-    parser.add_argument('prob_path', type=str, help = 'Path to probability maps')
-    parser.add_argument('prob_key',  type=str, help = 'Key for probability maps')
+    parser.add_argument('prob_path', type=str, help = 'Path to one of the tifs for probability maps')
 
     parser.add_argument('skeleton_path', type=str, help = 'Path to the json with the skeleton data')
 
@@ -47,7 +46,7 @@ def main():
     # TODO should this turn out too much overhead, we could also query
     # for only the ids of interest
     print "Projecting skeletons to dense segments"
-    dense_skeletons = dense_reconstruction(args.prob_path, args.prob_key,
+    dense_skeletons = dense_reconstruction(args.prob_path,
             skeleton_coordinates, args.rf_path)
 
     # TODO save this for optical check and figure out how to further process the result
@@ -59,9 +58,9 @@ def main():
         vigra.impex.writeVolume(dense_skeletons, fname, '.tif')
 
     # for debugging
-    #from volumina_viewer import volumina_n_layer
-    #probs = vigra.readHDF5(args.prob_path, args.prob_key)
-    #volumina_n_layer([probs, dense_skeletons.astype(np.uint32)])
+    from volumina_viewer import volumina_n_layer
+    probs = np.array(np.squeeze(vigra.readVolume(args.prob_path)))
+    volumina_n_layer([probs, dense_skeletons.astype(np.uint32)])
 
 
 if __name__ == '__main__':

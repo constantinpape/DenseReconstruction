@@ -95,9 +95,11 @@ def watersheds_dt(probs_2d, thresh, sigma):
 
 
 # dense reconstruction using random forest for agglomeration decisions
-def dense_reconstruction(prob_path, prob_key, skeleton_coordinates, rf_path):
+def dense_reconstruction(prob_path, skeleton_coordinates, rf_path):
 
-    probs = vigra.readHDF5(prob_path, prob_key)
+    probs = vigra.readVolume(prob_path)
+    probs = np.squeeze(probs)
+    probs = np.array(probs) # get rid of axistags...
     # need to invert for watersheds
     probs = 1. - probs
 
