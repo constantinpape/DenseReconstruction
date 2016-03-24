@@ -18,14 +18,14 @@ Input data:
 
 Usage:
 
-```python
+```bash
 python make_dense path_to_probability_maps path_to_exported_skeletons
 path_to_rf bounding_box.txt
 ```
 
 For storing the results as tifs, you can give an optional folder:
 
-```python
+```bash
 python make_dense path_to_probability_maps path_to_exported_skeletons
 path_to_rf bounding_box.txt --output_folder folder_for_results
 ```
