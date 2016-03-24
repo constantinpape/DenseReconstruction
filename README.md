@@ -39,6 +39,8 @@ Have to discuss what you need
 ## Possible Issues
 
 - You need proper cutouts of probability maps
+- So far, I haven't come around to look at the interpolation of virtual nodes, so there
+are some segments missing, but I will do this once I work on learning from skeletons.
 - Scaling for large volumes (3k x 3k x 200 takes ~ 1/2 hour on my laptop)
 - Reconstruction might fail for some cells, but for regular KCs it should work ok
     - Also I can improve this with more features for the Random Forest or a suited agglomeration procedure.
