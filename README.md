@@ -27,7 +27,7 @@ There are two scripts, which implement different functionality:
 For make_dense:
 
 ```bash
-python make_dense path_to_probability_maps path_to_exported_skeletons
+python make_dense.py path_to_probability_maps path_to_exported_skeletons
 path_to_rf bounding_box.txt folder_for_results
 ```
 The results will be stored as tif slices.
@@ -36,7 +36,7 @@ The results will be stored as tif slices.
 For get_statistics:
 
 ```bash
-python get_statistcs path_to_probability_maps path_to_exported_skeletons
+python get_statistcs.py path_to_probability_maps path_to_exported_skeletons
 path_to_rf bounding_box.txt folder_for_results --debug_folder folder_for_images
 ```
 
