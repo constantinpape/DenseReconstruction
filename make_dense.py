@@ -10,7 +10,7 @@ def process_command_line():
     parser = argparse.ArgumentParser(
             description='Input for dense reconstruction from skeletons')
 
-    parser.add_argument('prob_path', type=str, help = 'Path to one of the tifs for probability maps')
+    parser.add_argument('prob_folder', type=str, help = 'Path to folder with probability maps')
 
     parser.add_argument('skeleton_path', type=str, help = 'Path to the json with the skeleton data')
 
@@ -19,7 +19,7 @@ def process_command_line():
     parser.add_argument('bounding_box_file', type=str,
             help = 'File with bounding box of the probability maps in relation to the coordinate format in the json file, expects order x_min, x_max, y_min, y_max, z_min, z_max')
 
-    parser.add_argument('--output_folder', default = None,
+    parser.add_argument('output_folder', default = None,
             help = "Folder for saving result")
 
     args = parser.parse_args()
@@ -38,29 +38,32 @@ def main():
     assert len(bounding_box) == 6, "Bounding box needs 6 coordinates!"
     print "Bounding box:", bounding_box
 
+    shape = (bounding_box[1] - bounding_box[0],
+            bounding_box[3] - bounding_box[2],
+            bounding_box[5] - bounding_box[4] )
+
+    print "Resulting shape:", shape
+
     print "Reading in skeletons from", args.skeleton_path
     # get the skeleton coordinates first
     skeleton_coordinates = coordinates_from_json(args.skeleton_path, bounding_box)
 
     # perform dense reconstruction for all skeleton coordinates we have
-    # TODO should this turn out too much overhead, we could also query
-    # for only the ids of interest
     print "Projecting skeletons to dense segments"
-    dense_skeletons = dense_reconstruction(args.prob_path,
-            skeleton_coordinates, args.rf_path)
-
-    # TODO save this for optical check and figure out how to further process the result
-    if args.output_folder != None:
-        print "Saving dense segments to", args.output_folder
-        if not os.path.exists(args.output_folder):
-            os.mkdir(args.output_folder)
-        fname = os.path.join(args.output_folder, "dense_skeletons_z=")
-        vigra.impex.writeVolume(dense_skeletons, fname, '.tif')
+    dense_skeletons = dense_reconstruction(args.prob_folder,
+            skeleton_coordinates, args.rf_path,
+            shape)
 
     # for debugging
     from volumina_viewer import volumina_n_layer
-    probs = np.array(np.squeeze(vigra.readVolume(args.prob_path)))
+    probs = np.array(np.squeeze(vigra.readVolume(args.prob_folder+"/pmaps_z=000.tif")))
     volumina_n_layer([probs, dense_skeletons.astype(np.uint32)])
+
+    # save the results
+    #if not os.path.exists(args.output_folder):
+    #    os.mkdir(args.output_folder)
+    #fname = os.path.join(args.output_folder, "dense_skeletons_z=")
+    #vigra.impex.writeVolume(dense_skeletons, fname, '.tif')
 
 
 if __name__ == '__main__':

@@ -1,4 +1,5 @@
 import vigra
+import re
 import numpy as np
 import os
 import cPickle as pickle
@@ -94,68 +95,96 @@ def watersheds_dt(probs_2d, thresh, sigma):
         return seg_wsdt
 
 
-# dense reconstruction using random forest for agglomeration decisions
-def dense_reconstruction(prob_path, skeleton_coordinates, rf_path):
-
-    probs = vigra.readVolume(prob_path)
+def dense_reconstruction_slice(probs_slice_path, skeletons_volume, rf):
+    probs = vigra.readImage(probs_slice_path)
     probs = np.squeeze(probs)
     probs = np.array(probs) # get rid of axistags...
     # need to invert for watersheds
     probs = 1. - probs
 
-    seg = np.zeros_like(probs, dtype = np.uint32)
+    # Threshold and sigma hardcoded to values suited for the google pmaps
+    seg_wsdt = watersheds_dt(probs, 0.15, 2.6)
+
+    # this may happen for the black slices...
+    if np.unique(seg_wsdt).shape[0] == 1:
+        return np.zeros_like(probs, dtype = np.uint32)
+
+    rag = vigra.graphs.regionAdjacencyGraph(
+            vigra.graphs.gridGraph(seg_wsdt.shape[0:2]), seg_wsdt )
+
+    # +1 because we dont have a zero in overseg
+    merge_nodes = np.zeros(rag.nodeNum+1, dtype = np.uint32)
+
+    gridGraphEdgeIndicator = vigra.graphs.implicitMeanEdgeMap(rag.baseGraph,
+            probs)
+    edge_feats = rag.accumulateEdgeStatistics(gridGraphEdgeIndicator)
+    edge_feats = np.nan_to_num(edge_feats)
+    edge_probs = rf.predict_proba(edge_feats)[:,1]
+    probs_thresh = 0.5
+
+    for skel_id in np.unique(skeletons_volume):
+        if skel_id == 0:
+            continue
+        skel_c = np.where(skeletons_volume == skel_id)
+        for i in xrange(skel_c[0].size):
+            seg_id = seg_wsdt[ skel_c[0][i], skel_c[1][i] ]
+            merge_nodes[seg_id] = skel_id
+            root = rag.nodeFromId( long(seg_id) )
+            nodes_for_merge = [root]
+            already_merged  = [root]
+            while nodes_for_merge:
+                u = nodes_for_merge.pop()
+                for v in rag.neighbourNodeIter(u):
+                    edge = rag.findEdge(u,v)
+                    #print edge_mean_probs[edge.id]
+                    if edge_probs[edge.id] <= probs_thresh and not v.id in already_merged:
+                        merge_nodes[v.id] = skel_id
+                        nodes_for_merge.append(v)
+                        already_merged.append(v.id)
+    return rag.projectLabelsToBaseGraph(merge_nodes)
+
+
+# dense reconstruction using random forest for agglomeration decisions
+def dense_reconstruction(prob_path, skeleton_coordinates, rf_path, shape):
+
+    seg = np.zeros(shape, dtype = np.uint32)
 
     with open(rf_path, 'r') as f:
         rf = pickle.load(f)
 
-    skels_sparse = []
-    for z in xrange(probs.shape[2]):
-        skels_sparse.append( sparse.dok_matrix( (probs.shape[0], probs.shape[1]),
+    sparse_skeletons = []
+    for z in xrange(shape[2]):
+        sparse_skeletons.append( sparse.dok_matrix( (shape[0], shape[1]),
             dtype = np.uint32 ) )
     for skel_id in skeleton_coordinates:
         for c in skeleton_coordinates[skel_id]:
-            skels_sparse[ int(c[2]) ][int(c[0]), int(c[1])] = skel_id
+            sparse_skeletons[ int(c[2]) ][int(c[0]), int(c[1])] = skel_id
 
+    # get the filenames
+    files = os.listdir(prob_path)
+    assert len(files) == shape[2]
+    numbers = []
+    filepaths = []
+    # sort paths according to z slices
+    for f in files:
+        # This assumes, that we have only the number counting the z slice in the filename
+        number = re.findall(r'\d+', f)
+        assert len(number) == 1, "Filename should only contain the number indicating the z-slice"
+        numbers.append( int(number[0]) )
+        filepaths.append( os.path.join(prob_path,f) )
+    indices = np.argsort(numbers)
+    filepaths = np.array(filepaths)
+    filepaths = filepaths[indices]
+
+    # don't need this anymore
+    del numbers
+    del files
+    del indices
+
+    # iterate over z slices and reconstruct
     for z in xrange(seg.shape[2]):
         print "Processing slice", z, "/", seg.shape[2]
-        # Threshold and sigma hardcoded to values suited for the google pmaps
-        seg_wsdt = watersheds_dt(probs[:,:,z], 0.15, 2.6)
-        # this may happen for the black slices...
-        if np.unique(seg_wsdt).shape[0] == 1:
-            continue
-        rag = vigra.graphs.regionAdjacencyGraph(
-                vigra.graphs.gridGraph(seg_wsdt.shape[0:2]), seg_wsdt )
-
-        # +1 because we dont have a zero in overseg
-        merge_nodes = np.zeros(rag.nodeNum+1, dtype = np.uint32)
-
-        gridGraphEdgeIndicator = vigra.graphs.implicitMeanEdgeMap(rag.baseGraph,
-                probs[:,:,z])
-        edge_feats = rag.accumulateEdgeStatistics(gridGraphEdgeIndicator)
-        edge_feats = np.nan_to_num(edge_feats)
-        edge_probs = rf.predict_proba(edge_feats)[:,1]
-        probs_thresh = 0.5
-
-        skels_vol = skels_sparse[z].toarray()
-        for skel_id in np.unique(skels_vol):
-            if skel_id == 0:
-                continue
-            skel_c = np.where(skels_vol == skel_id)
-            for i in xrange(skel_c[0].size):
-                seg_id = seg_wsdt[ skel_c[0][i], skel_c[1][i] ]
-                merge_nodes[seg_id] = skel_id
-                root = rag.nodeFromId( long(seg_id) )
-                nodes_for_merge = [root]
-                already_merged  = [root]
-                while nodes_for_merge:
-                    u = nodes_for_merge.pop()
-                    for v in rag.neighbourNodeIter(u):
-                        edge = rag.findEdge(u,v)
-                        #print edge_mean_probs[edge.id]
-                        if edge_probs[edge.id] <= probs_thresh and not v.id in already_merged:
-                            merge_nodes[v.id] = skel_id
-                            nodes_for_merge.append(v)
-                            already_merged.append(v.id)
-        seg[:,:,z] = rag.projectLabelsToBaseGraph(merge_nodes)
+        probs_slice_path = filepaths[z]
+        seg[:,:,z] = dense_reconstruction_slice(probs_slice_path, sparse_skeletons[z].toarray(), rf)
 
     return seg
